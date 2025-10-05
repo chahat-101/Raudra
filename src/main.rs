@@ -1,9 +1,12 @@
+use anyhow::Ok;
+use std::sync::atomic::{AtomicU64,AtomicBool};
 use clap::Parser;
 use hdrhistogram::Histogram;
-use reqwest::{Client,Method};
+use reqwest::{Client,Method,header::HeaderName};
 use serde::Serialize;
 use std::collections::HashMap;
-use std::string;
+use std::str::FromStr;
+use std::{string, vec};
 use std::sync::{Arc,Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
@@ -73,6 +76,13 @@ struct LatencySummary{
     p99_ms:f64,
 }
 
+#[derive(Default)]
+struct Metrics {
+    total: AtomicU64,
+    success: AtomicU64,
+    failed: AtomicU64,
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()>{
 
@@ -89,6 +99,36 @@ async fn main() -> anyhow::Result<()>{
     // Defining the Method (Get/Put/etc)
     let method = args.method.parse::<Method>().unwrap_or(Method::GET);
 
+    let mut header_map = reqwest::header::HeaderMap::new();
+
+    for h in &args.headers {
+
+        if let Some(idx) = h.find(":"){
+            let key = h[..idx].trim();
+            let val = h[idx+1..].trim();
+
+            
+            if let Result::Ok(name) = reqwest::header::HeaderName::from_bytes(key.as_bytes()) {
+                if let Result::Ok(value) = reqwest::header::HeaderValue::from_str(val) {
+                    header_map.insert(name, value);
+                }
+            }
+        }
+
+    }
+
+    // Building Client
+    let client = Client::builder()
+                                .redirect(reqwest::redirect::Policy::limited(10))
+                                .build()?;
+
+    
+    let metrics = Arc::new(Metrics::default());
+    let stop_flag = Arc::new(AtomicBool::new(false));
+    let histogram: Arc<Mutex<Vec<Histogram<u64>>>> = Arc::new(Mutex::new(Vec::new()));
+
+
+    let histogram_budget = Arc::new(AtomicU64::new(args.requests.unwrap_or(0)));
     
     Ok(())
 

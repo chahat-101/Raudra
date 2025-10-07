@@ -128,7 +128,38 @@ async fn main() -> anyhow::Result<()>{
     let histogram: Arc<Mutex<Vec<Histogram<u64>>>> = Arc::new(Mutex::new(Vec::new()));
 
 
-    let histogram_budget = Arc::new(AtomicU64::new(args.requests.unwrap_or(0)));
+    let requests_budget = Arc::new(AtomicU64::new(args.requests.unwrap_or(0)));
+
+    let (token_tx,token_rx) = if args.rps == 0{
+        let (tx,rx) = mpsc::channel::<()>(1);
+        (None,Some(rx))
+    }
+    else{
+        let cap = (args.rps*2).max(100) as usize;
+        let (tx,rx)= mpsc::channel::<()>(cap);
+        let tx_clone = tx.clone();
+        let rps = args.rps;
+        tokio::spawn(async move{
+            let tick_ms = 100u64;
+            let per_tick = (rps as f64 * (tick_ms as f64 /1000.0)).round() as usize;
+            let mut interval = tokio::time::interval(Duration::from_millis(tick_ms));
+            
+            loop {
+                interval.tick().await;
+                
+                for _ in 0..per_tick{
+                    if tx_clone.send(()).await.is_err(){
+                        return ;
+                    }
+                }
+            }
+        
+        });
+        (Some(tx),Some(rx))
+    };
+
+    let token_rx = token_rx.unwrap();
+
     
     Ok(())
 

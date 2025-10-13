@@ -1,15 +1,12 @@
-use anyhow::Ok;
-use std::sync::atomic::{AtomicU64,AtomicBool};
+// use anyhow::Ok;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use clap::Parser;
 use hdrhistogram::Histogram;
-use reqwest::{Client,Method,header::HeaderName};
+use reqwest::{Client,Method,};
 use serde::Serialize;
-use std::collections::HashMap;
-use std::str::FromStr;
-use std::{string, vec};
 use std::sync::{Arc,Mutex};
 use std::time::{Duration, Instant};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc,Mutex as TokioMutex};
 use tokio::time::sleep;
 
 #[derive(Parser,Debug)]
@@ -24,11 +21,11 @@ struct Args{
     method:String,
 
     // Headers as Key:Value pairs
-    #[arg(short = 'H',long = "header")]
+    #[arg(short = 'h',long = "header")]
     headers:Vec<String>,
 
     // Request Body, this is required for Post/Put requests.
-    #[arg(short = 'H',long)]
+    #[arg(short = 'b',long)]
     body:Option<String>,
 
     #[arg(short = 'c',long,default_value_t = 50)]
@@ -62,7 +59,8 @@ struct Summary{
     total_requests:u64,
     successes:u64,
     failures:u64,
-    achieved_ms:LatencySummary
+    achieved_rps: f64,
+    latency_ms:LatencySummary
 }
 
 #[derive(Serialize,Debug)]
@@ -90,7 +88,7 @@ async fn main() -> anyhow::Result<()>{
 
     // Basic Validation: either duration or number of requests must be set
     if args.duration_sec.is_none() && args.requests.is_none() {
-        anyhow::bail!("Either --duration--ser or --requests must be provided");
+        anyhow::bail!("Either --duration--sec or --requests must be provided");
     }
     if args.duration_sec.is_some() && args.requests.is_some() {
         anyhow::bail!("Provide only --duration--sec or --requests");
@@ -125,15 +123,14 @@ async fn main() -> anyhow::Result<()>{
     
     let metrics = Arc::new(Metrics::default());
     let stop_flag = Arc::new(AtomicBool::new(false));
-    let histogram: Arc<Mutex<Vec<Histogram<u64>>>> = Arc::new(Mutex::new(Vec::new()));
+    let histograms: Arc<Mutex<Vec<Histogram<u64>>>> = Arc::new(Mutex::new(Vec::new()));
 
 
     let requests_budget = Arc::new(AtomicU64::new(args.requests.unwrap_or(0)));
 
-    let (token_tx,token_rx) = if args.rps == 0{
-        let (tx,rx) = mpsc::channel::<()>(1);
-        (None,Some(rx))
-    }
+    let token_reciever_opt:Option<Arc<TokioMutex<mpsc::Receiver<()>>>> = if args.rps == 0{
+        None
+    } 
     else{
         let cap = (args.rps*2).max(100) as usize;
         let (tx,rx)= mpsc::channel::<()>(cap);
@@ -155,12 +152,206 @@ async fn main() -> anyhow::Result<()>{
             }
         
         });
-        (Some(tx),Some(rx))
+        Some(Arc::new(TokioMutex::new(rx)))
     };
 
-    let token_rx = token_rx.unwrap();
+    
 
+    let start = Instant::now();
+    let mut handles = Vec::with_capacity(args.concurrency);
+    for worker_id in 0..args.concurrency{
+        
+        let client = client.clone();
+        let urls = args.urls.clone();
+        
+        let metrices = metrics.clone();
+        let stop_flag = Arc::clone(&stop_flag);
+        
+        let histograms = Arc::clone(&histograms);
+        let requests_budget = Arc::clone(&requests_budget);
+        
+        let token_reciever_clone = token_reciever_opt.as_ref().map(Arc::clone);
+        let headers = header_map.clone();
+        
+        let body = args.body.clone();
+        let timeout = Duration::from_millis(args.timeout_ms);
+        
+        let method = method.clone();
+        let rps = args.rps;
+        {
+        let mut guard = histograms.lock().unwrap();
+        guard.push(Histogram::<u64>::new_with_max(10_000_000,3).unwrap());
+        }
+
+        let handle = tokio::spawn(async move {
+            let mut local_count: u64 = 0;
+            let try_reserve = |budget:&AtomicU64| -> bool{
+                let mut cur:u64 = budget.load(Ordering::SeqCst);
+                loop{
+                    if cur == 0{
+                        return false;
+                    }
+                    match budget.compare_exchange(cur, cur - 1, Ordering::SeqCst, Ordering::SeqCst){
+                        Ok(_) => return true,
+                        Err(now) => cur = now,
+                    }
+                }
+            };
+            
+            loop {
+                if stop_flag.load(Ordering::Relaxed){
+                    break;
+                }
+
+                if args.requests.is_some(){
+                    if !try_reserve(&requests_budget){
+                        break;
+                    }
+                }
+                if rps>0{
+                    if let Some(rx_arc) = &token_reciever_clone{
+                        let mut rx = rx_arc.lock().await;
+                        if rx.recv().await.is_none() {
+                            break;
+                        }
+                    }
+                }
+
+                let idx = (local_count as usize) % urls.len();
+                local_count = local_count.wrapping_add(1);
+                let url = &urls[idx];
+
+                let req_start = Instant::now();
+
+                let mut req_builder = client.request(method.clone(), url).headers(headers.clone()).timeout(timeout);
+                
+                if let Some(ref b) = body{
+                    req_builder = req_builder.body(b.clone());
+                }
+                
+                let resp = req_builder.send().await;
+                let elapsed = req_start.elapsed();
+                let micros = elapsed.as_micros() as u64;
+
+                metrices.total.fetch_add(1, Ordering::Relaxed);
+                match resp{
+                    Ok(resp) => {
+                        if resp.status().is_success(){
+                            metrices.success.fetch_add(1, Ordering::Relaxed);
+                        } else{
+                            metrices.failed.fetch_add(1, Ordering::Relaxed);
+                        }
+                    }
+
+                    Err(_) => {
+                        metrices.failed.fetch_add(1, Ordering::Relaxed);
+                    }
+                }
+
+                {
+                    let mut guard = histograms.lock().unwrap();
+                    if let Some(h) = guard.get_mut(worker_id){
+                        let v = if micros == 0{1}else{micros};
+                        let _ = h.record(v);
+                    }
+                }
+            }
+        });
+
+        handles.push(handle);
+    }
+
+    if let Some(d) = args.duration_sec{
+        sleep(Duration::from_secs(d)).await;
+        stop_flag.store(true, Ordering::Relaxed);
+   } else if args.requests.is_some() {
+        while requests_budget.load(Ordering::SeqCst) > 0{
+            if stop_flag.load(Ordering::Relaxed){
+                break;
+            }
+            sleep(Duration::from_millis(50)).await;
+
+        }
+        stop_flag.store(true,Ordering::Relaxed);
+   }
+
+   sleep(Duration::from_millis(200)).await;
+   for h in handles{
+    let _ = h.await;
+   }
+
+   let elapsed = start.elapsed();
+   let total = metrics.total.load(Ordering::Relaxed);
+   let success = metrics.success.load(Ordering::Relaxed);
+   let failed = metrics.failed.load(Ordering::Relaxed);
+   let elapsed_s = elapsed.as_secs_f64();
+   let achieved_rps = if elapsed_s > 0.0 { total as f64/elapsed_s } else{0.0};
+
+
+   let merged = {
+    let guard = histograms.lock().unwrap();
+    let mut merged = Histogram::<u64>::new_with_max(10_000_000, 3).unwrap();
+    for h in guard.iter(){
+        let _ = merged.add(h);
+    }
+    merged
+   };
+
+   let count = merged.len();
+   let (min,max,mean,p50,p90,p99) = if count>0{
+    (
+        merged.min() as f64/ 1000.0,
+        merged.max() as f64/ 1000.0,
+        merged.mean()/1000.0,
+        merged.value_at_quantile(0.5) as f64/1000.0,
+        merged.value_at_quantile(0.9) as f64/1000.0,
+        merged.value_at_quantile(0.99) as f64/1000.0,
+    )
+   }else{
+        (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+   };
+
+   let summary = Summary{
+        runtime_s: elapsed_s,
+        total_requests:total,
+        successes:success,
+        failures:failed,
+        achieved_rps:achieved_rps,
+        latency_ms:LatencySummary{
+            count,
+            min_ms:min,
+            max_ms:max,
+            mean_ms:mean,
+            p50_ms:p50,
+            p90_ms:p90,
+            p99_ms:p99
+        },
+   };
+    
+
+    if args.print{
+        println!("\n==== Load Handling Summary ====");
+        println!("Runtime: {:.3} s", summary.runtime_s);
+        println!("Total requests: {}", summary.total_requests);
+        println!("  Successes: {}", summary.successes);
+        println!("  Failures:  {}", summary.failures);
+        println!("Achieved RPS: {:.2}", summary.achieved_rps);
+        println!("Latency (ms) count = {}", summary.latency_ms.count);
+    }
+    if summary.latency_ms.count > 0 {
+            println!("  min:  {:.3}", summary.latency_ms.min_ms);
+            println!("  mean: {:.3}", summary.latency_ms.mean_ms);
+            println!("  max:  {:.3}", summary.latency_ms.max_ms);
+            println!("  p50:  {:.3}", summary.latency_ms.p50_ms);
+            println!("  p90:  {:.3}", summary.latency_ms.p90_ms);
+            println!("  p99:  {:.3}", summary.latency_ms.p99_ms);
+        }
+    
+    if let Some(path) = args.out {
+        let j = serde_json::to_string_pretty(&summary)?;
+        tokio::fs::write(path, j).await?;
+    }
     
     Ok(())
 
-}
+}   

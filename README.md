@@ -1,14 +1,14 @@
 # Load Handling Checker (Rust)
 
-A fast async Rust CLI tool for website load testing with **global RPS control**.
+A fast async Rust CLI tool for website load testing with **global RPS (requests per second)** control.
 
 ## Features
 
 * Multiple target URLs (round-robin)
-* Configurable HTTP method, headers, and body
+* Configurable method, headers, and body
 * Global RPS limiter
-* Duration- or request-based stopping
-* Latency stats (p50/p90/p99)
+* Duration **or** request-based stopping
+* Latency metrics (p50/p90/p99)
 * JSON summary output
 
 ## Build
@@ -23,22 +23,22 @@ cargo build --release
 ./load-checker -u https://example.com [options]
 ```
 
-### Key options
+### Key Options
 
-| Flag                 | Description                         |
-| -------------------- | ----------------------------------- |
-| `-u, --urls`         | Target URL(s) (required)            |
-| `-m, --method`       | HTTP method (default: GET)          |
-| `-h, --header`       | Header `Key:Value`                  |
-| `-b, --body`         | Request body                        |
-| `-c, --concurrency`  | Number of workers (default: 50)     |
-| `-r, --rps`          | Global requests/sec (0 = unlimited) |
-| `-d, --duration-sec` | Duration in seconds                 |
-| `-n, --requests`     | Total number of requests            |
-| `-t, --timeout-ms`   | Timeout per request (ms)            |
-| `-o, --out`          | Output JSON summary file            |
+| Flag                 | Description                      |
+| -------------------- | -------------------------------- |
+| `-u, --urls`         | Target URL(s) (required)         |
+| `-m, --method`       | HTTP method (default: GET)       |
+| `-h, --header`       | Header `Key:Value`               |
+| `-b, --body`         | Request body                     |
+| `-c, --concurrency`  | Number of workers (default: 50)  |
+| `-r, --rps`          | Global RPS limit (0 = unlimited) |
+| `-d, --duration-sec` | Duration in seconds              |
+| `-n, --requests`     | Total number of requests         |
+| `-t, --timeout-ms`   | Timeout per request (ms)         |
+| `-o, --out`          | Output JSON summary file         |
 
-Either `--duration-sec` **or** `--requests` must be set.
+> You must provide either `--duration-sec` **or** `--requests`.
 
 ## Example
 
@@ -46,7 +46,7 @@ Either `--duration-sec` **or** `--requests` must be set.
 ./load-checker -u https://example.com -c 50 -r 200 -d 15 -t 5000
 ```
 
-### Example output
+### Example Output
 
 ```
 ==== Load Handling Summary ====
@@ -58,7 +58,7 @@ Achieved RPS: 199.8
 Latency (ms): p50=35.2 p90=80.1 p99=210.4
 ```
 
-## JSON summary (if `--out` used)
+### JSON Summary (with `--out`)
 
 ```json
 {
@@ -75,6 +75,10 @@ Latency (ms): p50=35.2 p90=80.1 p99=210.4
 
 MIT — use responsibly (only test systems you control).
 
+## Contributing
+
+Pull requests are appreciated ❤️
+Bug fixes, feature ideas, and improvements are all welcome.
+
 ---
 
-Would you like me to make it in Markdown format (`README.md` file) for direct copy-paste?

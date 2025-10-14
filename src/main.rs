@@ -2,6 +2,7 @@ use clap::Parser;
 use serde::{Serialize};
 use tokio::{main,sync::Mutex as Mutex};
 use reqwest::{Client,Request,header};
+use std::sync::{Arc};
 #[derive(Parser,Debug)]
 struct Args{
 
@@ -35,6 +36,28 @@ struct Latency_Summary {
     p90: f32,
     p99: f32,
 }
+
+struct UserAgentRotator{
+    agents:Vec<String>,
+    counter:Arc<Mutex<usize>>
+}
+
+impl UserAgentRotator{
+    fn new(agent:Vec<String>) -> Self{
+        Self{
+            agents:agent,
+            counter:Arc::new(Mutex::new(0))
+        }
+    }
+
+    async fn get_next(&self) -> String{
+        let mut counter = self.counter.lock().await;
+        let agent = self.agents[*counter%self.agents.len()].clone();
+        *counter +=1;
+        agent
+    }
+}
+
 
 #[main]
 async fn main() -> Result<(), Box<dyn std::error::Error> >{

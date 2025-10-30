@@ -46,7 +46,7 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/raudra.git
+git clone https://github.com/chahat-101/raudra.git
 cd raudra
 
 # Build in release mode for optimal performance

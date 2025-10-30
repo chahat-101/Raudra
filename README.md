@@ -11,37 +11,36 @@
 ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝
 ```
 
-**A blazing-fast HTTP load testing tool written in Rust**
+**A blazing-fast HTTP load testing tool built with Rust 🦀**
 
 [![Rust](https://img.shields.io/badge/rust-%23000000.svg?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Tokio](https://img.shields.io/badge/tokio-async-green?style=for-the-badge)](https://tokio.rs/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](LICENSE)
+
+[Features](#-features) • [Installation](#-installation) • [Usage](#-usage) • [Technical Details](#-technical-details) • [Contributing](#-contributing)
 
 </div>
 
 ---
 
-## 📋 Overview
+## 🚀 Features
 
-Raudra is a powerful, concurrent HTTP load testing tool that helps you stress-test your web applications and APIs. Built with Rust's async/await capabilities using Tokio, it provides detailed performance metrics and latency analysis.
+- ⚡ **Blazing Fast** - Leverages Rust's performance and Tokio's async runtime for maximum throughput
+- 🎯 **Concurrent Requests** - Send thousands of concurrent HTTP requests with ease
+- 📊 **Detailed Analytics** - Comprehensive latency analysis with percentile distributions (P50, P90, P99)
+- 🎭 **User Agent Rotation** - Built-in support for 10,000+ user agents (included in `user_agents.txt`)
+- 🌐 **IP Spoofing** - Automatic random IP generation with proper header injection
+- 🎨 **Beautiful CLI** - Colorful, centered terminal UI with real-time progress indicators
+- 📈 **HDR Histograms** - High dynamic range histogram for accurate latency measurements
+- 🔄 **Smart Redirects** - Configurable redirect policy (limited to 3 redirects)
+- 🛡️ **Cache Busting** - Automatic cache-control headers to ensure accurate testing
 
-### ✨ Key Features
-
-- 🚀 **Concurrent Requests**: Spawn thousands of parallel HTTP requests
-- 📊 **Detailed Metrics**: Track success rates, failures, and response times
-- 📈 **Latency Analysis**: Get percentile-based latency statistics (P50, P90, P99)
-- 🎭 **User Agent Rotation**: Randomize user agents for realistic testing
-- 🌐 **IP Spoofing**: Generate random public IPs for X-Forwarded-For headers
-- 🎨 **Beautiful CLI**: Interactive command-line interface with colored output
-- ⚡ **High Performance**: Leverages Rust's zero-cost abstractions and async I/O
-
----
-
-## 🛠️ Installation
+## 📦 Installation
 
 ### Prerequisites
 
 - Rust 1.70 or higher
-- Cargo (comes with Rust)
+- Cargo package manager
 
 ### Build from Source
 
@@ -50,180 +49,226 @@ Raudra is a powerful, concurrent HTTP load testing tool that helps you stress-te
 git clone https://github.com/yourusername/raudra.git
 cd raudra
 
-# Build the project
+# Build in release mode for optimal performance
 cargo build --release
 
 # Run the binary
 ./target/release/raudra
 ```
 
----
+### Dependencies
 
-## 📦 Dependencies
-
-Add these to your `Cargo.toml`:
+Raudra uses the following crates:
 
 ```toml
 [dependencies]
-tokio = { version = "1.0", features = ["full"] }
 reqwest = { version = "0.11", features = ["json"] }
+tokio = { version = "1", features = ["full"] }
+colored = "2.0"
 hdrhistogram = "7.5"
 rand = "0.8"
-colored = "2.0"
+terminal_size = "0.3"
 ```
 
----
+## 🎯 Usage
 
-## 🚀 Usage
+### Basic Usage
 
-### Interactive Mode
+1. **Start Raudra**
+   ```bash
+   ./raudra
+   ```
 
-Simply run the binary and follow the prompts:
+2. **Enter target URL**
+   ```
+   Enter target URL: https://example.com
+   ```
 
-```bash
-./raudra
-```
+3. **Specify number of requests**
+   ```
+   Enter number of requests: 1000
+   ```
 
-You'll be asked to:
-1. Confirm if you want to begin testing
-2. Enter the target URL
-3. Specify the number of concurrent requests
+4. **Review results**
+   - Success/failure summary
+   - Latency analysis with percentiles
+   - Min/max/average response times
 
 ### Example Session
 
 ```
-Do you want to begin!?
-For yes enter Y/y else N/n
-> y
+🎯 Target Configuration
+─────────────────────────────────────────────────────────────
+Enter target URL: https://api.example.com/health
 
-Enter the target
-> https://example.com
+─────────────────────────────────────────────────────────────
+Enter number of requests: 5000
 
-Enter the number of requests:
-> 1000
+═════════════════════════════════════════════════════════════
+📋 Test Configuration
+═════════════════════════════════════════════════════════════
+  Target: https://api.example.com/health
+  Requests: 5000
+═════════════════════════════════════════════════════════════
+
+🔥 Initiating load test...
+─────────────────────────────────────────────────────────────
+✓ 200 OK
+✓ 200 OK
+✓ 200 OK
+...
 ```
 
-### Output
+## 📊 Output Metrics
 
-Raudra provides comprehensive statistics after each test:
+### Request Summary
+- **Total Requests** - Total number of requests sent
+- **Successes** - Number of successful responses (2xx status codes)
+- **Failed** - Number of failed requests (errors or non-2xx status)
+- **Success Rate** - Percentage of successful requests
 
-```
-Total: 1000 | Successes: 995 | Failed: 5
-
-Latency Summary (ms):
-  Min:  45.23
-  Max:  1234.56
-  Mean: 123.45
-  P50:  98.76
-  P90:  234.12
-  P99:  567.89
-```
-
----
-
-## 📊 Metrics Explained
-
-### Success/Failure Rates
-- **Total**: Total number of requests sent
-- **Successes**: Requests that received a valid HTTP response
-- **Failed**: Requests that encountered errors or timeouts
-
-### Latency Percentiles
-- **Min/Max**: Fastest and slowest response times
-- **Mean**: Average response time across all requests
-- **P50 (Median)**: 50% of requests were faster than this
-- **P90**: 90% of requests were faster than this
-- **P99**: 99% of requests were faster than this
-
----
-
-## ⚙️ Configuration
-
-### User Agents
-
-Create a `user_agents.txt` file in the same directory as the binary:
-
-```
-Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
-Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36
-Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36
-```
-
-Each line should contain one user agent string.
-
-### Request Headers
-
-Raudra automatically sets the following headers:
-- `X-Forwarded-For`: Random public IP
-- `Forwarded`: IP forwarding information
-- `User-Agent`: Randomly selected from user_agents.txt
-- `Cache-Control`: Prevents caching
-- `Pragma`: Legacy cache control
-- `Expires`: Cache expiration
-
----
+### Latency Analysis
+- **Minimum** - Fastest response time
+- **Maximum** - Slowest response time
+- **Average** - Mean response time
+- **P50 (Median)** - 50th percentile
+- **P90** - 90th percentile (90% of requests faster than this)
+- **P99** - 99th percentile (99% of requests faster than this)
 
 ## 🔧 Technical Details
 
 ### Architecture
 
-- **Async Runtime**: Tokio for efficient async I/O
-- **HTTP Client**: reqwest with connection pooling
-- **Concurrency**: Spawns individual tokio tasks for each request
-- **Synchronization**: Arc<Mutex<T>> for thread-safe metric collection
-- **Histogram**: HDR Histogram for accurate latency percentiles
+Raudra uses an async, concurrent architecture built on Tokio:
 
-### IP Generation
+```
+┌─────────────┐
+│   CLI Input │
+└──────┬──────┘
+       │
+       ▼
+┌─────────────────┐
+│ Request Spawner │
+└────────┬────────┘
+         │
+         ▼
+┌────────────────────────────┐
+│   Concurrent Async Tasks   │
+│  ┌──────┐ ┌──────┐ ┌──────┐
+│  │Task 1│ │Task 2│ │Task N│
+│  └──────┘ └──────┘ └──────┘
+└────────────┬───────────────┘
+             │
+             ▼
+┌────────────────────────────┐
+│   Shared State (Mutex)     │
+│  • Summary Statistics      │
+│  • Latency Histogram       │
+└────────────┬───────────────┘
+             │
+             ▼
+┌────────────────────────────┐
+│    Results Aggregation     │
+└────────────────────────────┘
+```
 
-Raudra generates random public IPv4 addresses while excluding:
-- Private ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
-- Loopback (127.0.0.0/8)
-- Multicast (224.0.0.0 - 239.255.255.255)
+### Features Breakdown
 
----
+#### User Agent Rotation
+- **10,000+ User Agents** pre-loaded in `user_agents.txt`
+- Random selection for each request
+- Helps simulate realistic traffic patterns
+
+#### IP Spoofing
+- Generates random public IPv4 addresses
+- Excludes private ranges (10.x.x.x, 172.16-31.x.x, 192.168.x.x)
+- Excludes loopback (127.x.x.x) and multicast (224-239.x.x.x)
+- Injects headers: `X-Forwarded-For` and `Forwarded`
+
+#### Latency Measurement
+- Uses HDR Histogram for accurate percentile calculations
+- Microsecond precision timing
+- Tracks full distribution of response times
+
+## 🎨 Customization
+
+### Modifying Request Headers
+
+Edit the header configuration in `main()`:
+
+```rust
+let mut headers = HeaderMap::new();
+headers.insert("X-Custom-Header", HeaderValue::from_str("value")?);
+```
+
+### Adjusting Redirect Policy
+
+Change the redirect limit:
+
+```rust
+let client = Client::builder()
+    .redirect(Policy::limited(5))  // Allow 5 redirects
+    .build()?;
+```
+
+### Custom User Agents
+
+Replace or append to `user_agents.txt` with your own user agent strings (one per line).
 
 ## ⚠️ Disclaimer
 
-**IMPORTANT**: This tool is designed for testing your own applications and services. 
+**Important**: This tool is designed for legitimate load testing purposes only. 
 
-- ✅ Use on systems you own or have permission to test
-- ❌ Do not use for malicious purposes or unauthorized testing
-- ⚖️ Comply with all applicable laws and terms of service
-- 🛡️ The authors are not responsible for misuse of this tool
+- Only test systems you own or have explicit permission to test
+- Respect rate limits and terms of service
+- Do not use this tool for malicious purposes
+- Be aware of legal implications in your jurisdiction
+- High request volumes can impact system availability
 
----
+**The authors are not responsible for misuse of this tool.**
 
 ## 🤝 Contributing
 
-Contributions are welcome! Here's how you can help:
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+### Development Setup
 
----
+```bash
+# Clone and enter directory
+git clone https://github.com/yourusername/raudra.git
+cd raudra
+
+# Run in development mode
+cargo run
+
+# Run tests
+cargo test
+
+# Format code
+cargo fmt
+
+# Lint code
+cargo clippy
+```
 
 ## 📝 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
----
-
 ## 🙏 Acknowledgments
 
 - Built with [Rust](https://www.rust-lang.org/)
 - Async runtime by [Tokio](https://tokio.rs/)
-- HTTP client by [reqwest](https://github.com/seanmonstar/reqwest)
-- Colored terminal output by [colored](https://github.com/mackwic/colored)
+- HTTP client by [Reqwest](https://github.com/seanmonstar/reqwest)
+- Terminal colors by [Colored](https://github.com/mackwic/colored)
+- Latency histograms by [HDR Histogram](https://github.com/HdrHistogram/HdrHistogram_rust)
 
 ---
 
 <div align="center">
 
-**Made with ❤️ and Rust**
+**Made with ❤️ and Rust 🦀**
 
-If you find this tool useful, consider giving it a ⭐!
+[⬆ Back to Top](#-raudra)
 
-</div>
+</div>  
